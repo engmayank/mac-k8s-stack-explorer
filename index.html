@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mac Kubernetes Stack Explorer</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#ffffff; --ink:#1b1f27; --muted:#5b6575; --line:#d9dde4;
+  --mac:#eef1f6; --vm:#e8f0fb; --outer:#e3f4ee; --node:#fdf3df; --inner:#f6e9f8;
+  --accent:#2457d6; --hot:#ffd84d; --hotink:#1b1f27; --good:#18794e; --bad:#b42318;
+  --code:#101828; --codebg:#eef0f4;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1218; --card:#171b23; --ink:#e8ebf0; --muted:#9aa4b4; --line:#2a303b;
+    --mac:#1a1f29; --vm:#18243a; --outer:#14302a; --node:#33290f; --inner:#2b1c30;
+    --accent:#7aa2ff; --hot:#e6b800; --hotink:#111; --good:#4cc38a; --bad:#ff8a80;
+    --code:#e8ebf0; --codebg:#10141b;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1218; --card:#171b23; --ink:#e8ebf0; --muted:#9aa4b4; --line:#2a303b;
+  --mac:#1a1f29; --vm:#18243a; --outer:#14302a; --node:#33290f; --inner:#2b1c30;
+  --accent:#7aa2ff; --hot:#e6b800; --hotink:#111; --good:#4cc38a; --bad:#ff8a80;
+  --code:#e8ebf0; --codebg:#10141b;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:1.6rem;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 16px}
+.top{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+button{font:inherit;cursor:pointer}
+.theme{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0 18px}
+nav button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:7px 14px}
+nav button[aria-selected="true"]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.panel{display:none}.panel.on{display:block}
+.grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:start}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+.card h2{margin:0 0 6px;font-size:1.15rem}
+.layer{border:2px solid var(--line);border-radius:12px;padding:10px;margin:8px 0;cursor:pointer;transition:box-shadow .15s,border-color .15s}
+.layer>.lt{font-weight:600;font-size:.92rem;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline}
+.layer>.lt small{font-weight:400;color:var(--muted)}
+.layer[data-id=mac]{background:var(--mac)}
+.layer[data-id=vm]{background:var(--vm)}
+.layer[data-id=outer]{background:var(--outer)}
+.layer[data-id=node]{background:var(--node)}
+.layer[data-id=inner]{background:var(--inner)}
+.layer.sel{border-color:var(--accent)}
+.layer.hot{box-shadow:0 0 0 3px var(--hot);border-color:var(--hot)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>.layer{flex:1 1 140px;background:var(--card);margin:6px 0}
+.chip{font-size:.85rem}
+.pill{display:inline-block;border:1px solid var(--line);background:var(--card);border-radius:6px;padding:1px 7px;font-size:.78rem;margin:2px 3px 0 0}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86rem}
+code{background:var(--codebg);color:var(--code);padding:1px 5px;border-radius:5px}
+pre{background:var(--codebg);color:var(--code);padding:10px 12px;border-radius:8px;overflow:auto;margin:8px 0;white-space:pre-wrap;word-break:break-word}
+.tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;border-radius:5px;padding:2px 7px;margin-right:6px}
+.t-ex{background:#e0f2e9;color:#145c3a}.t-no{background:#fde4e1;color:#8a1c12}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .t-ex{background:#143626;color:#7fe0b0}:root:not([data-theme="light"]) .t-no{background:#3a1b18;color:#ffb4ab}}
+:root[data-theme="dark"] .t-ex{background:#143626;color:#7fe0b0}:root[data-theme="dark"] .t-no{background:#3a1b18;color:#ffb4ab}
+.steps{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.steps button,.btn{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:7px 14px}
+.btn.alt{background:var(--card);color:var(--ink);border:1px solid var(--line)}
+.btn[disabled]{opacity:.45;cursor:default}
+.flowtabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.flowtabs button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px 12px}
+.flowtabs button[aria-selected="true"]{border-color:var(--accent);color:var(--accent);font-weight:600}
+.bar{height:6px;background:var(--line);border-radius:4px;overflow:hidden;margin:6px 0 10px}
+.bar>i{display:block;height:100%;background:var(--accent);width:0}
+table{width:100%;border-collapse:collapse;font-size:.92rem}
+th,td{text-align:left;padding:8px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+.tw{overflow-x:auto}
+.ev{border-left:4px solid var(--accent);padding:2px 12px;margin:12px 0}
+.ev h3{margin:0 0 4px;font-size:1rem}
+.q{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.q .opts{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.q .opts button{text-align:left;background:var(--codebg);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 10px}
+.q .opts button.right{border-color:var(--good);background:transparent}
+.q .opts button.wrong{border-color:var(--bad);background:transparent}
+.q .fb{margin-top:8px;color:var(--muted);display:none}
+.q .fb.on{display:block}
+.note{background:var(--codebg);border-radius:8px;padding:10px 12px;margin:10px 0;color:var(--ink)}
+footer{color:var(--muted);font-size:.85rem;margin-top:26px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>Mac Kubernetes Stack Explorer</h1>
+      <p class="sub">What is actually running when you type <code>kubectl</code> on a MacBook with Docker Desktop + minikube. Built from real command output.</p>
+    </div>
+    <button class="theme" id="themeBtn" type="button">Toggle theme</button>
+  </div>
+
+  <nav role="tablist" id="tabs">
+    <button role="tab" aria-selected="true" data-p="stack">1. The stack</button>
+    <button role="tab" aria-selected="false" data-p="trace">2. Follow a command</button>
+    <button role="tab" aria-selected="false" data-p="where">3. Which layer am I in?</button>
+    <button role="tab" aria-selected="false" data-p="proof">4. Your outputs decoded</button>
+    <button role="tab" aria-selected="false" data-p="cka">5. Mac vs the exam</button>
+    <button role="tab" aria-selected="false" data-p="quiz">6. Self-check</button>
+  </nav>
+
+  <!-- 1 STACK -->
+  <section class="panel on" id="p-stack">
+    <div class="grid">
+      <div id="stackView" aria-label="Nested layers of the stack">
+        <div class="layer" data-id="mac">
+          <div class="lt">macOS on MacBook Air M4 <small>(arm64)</small></div>
+          <div class="row" style="margin-bottom:2px">
+            <div class="layer chip" data-id="cli"><div class="lt">Client tools on the Mac <small>kubectl · minikube · docker CLI</small></div></div>
+          </div>
+          <div class="layer" data-id="vm">
+            <div class="lt">Docker Desktop's hidden Linux VM <small>supplies the Linux kernel</small></div>
+            <div class="layer" data-id="outer">
+              <div class="lt">Outer Docker Engine <small>what <code>docker ps</code> on your Mac talks to</small></div>
+              <div class="layer" data-id="node">
+                <div class="lt">Container named <code>minikube</code> = your Kubernetes "node" <small>Debian 12 · 192.168.49.2</small></div>
+                <div class="row">
+                  <div class="layer chip" data-id="kubelet"><div class="lt">kubelet <small>systemd service</small></div></div>
+                  <div class="layer chip" data-id="cri"><div class="lt">cri-dockerd <small>CRI shim</small></div></div>
+                </div>
+                <div class="layer" data-id="inner">
+                  <div class="lt">Inner Docker Engine <small>the "container runtime" Kubernetes sees</small></div>
+                  <div class="row">
+                    <div class="layer chip" data-id="cplane"><div class="lt">Control plane containers</div><span class="pill">etcd</span><span class="pill">kube-apiserver</span><span class="pill">scheduler</span><span class="pill">controller-mgr</span><span class="pill">kube-proxy</span><span class="pill">coredns</span></div>
+                    <div class="layer chip" data-id="pods"><div class="lt">Your workload pods</div><span class="pill">nginx</span><span class="pill">redis</span><span class="pill">…</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="sub" style="margin-top:10px">Click any layer. Boxes inside boxes means "runs inside".</p>
+      </div>
+
+      <div>
+        <div class="card" id="detail" aria-live="polite"></div>
+        <div class="card" style="margin-top:12px">
+          <h2>Three words people mix up</h2>
+          <p><b>Driver</b> (minikube): where the node lives. Yours is <code>docker</code>, so the node is a container. Other drivers make a real VM.</p>
+          <p><b>Runtime</b> (Kubernetes): what starts containers on a node. Yours is <code>docker</code>. The exam uses <code>containerd</code>.</p>
+          <p><b>Context</b> (kubectl): a saved "which cluster, which user" line in <code>~/.kube/config</code>. It is not a running thing.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 TRACE -->
+  <section class="panel" id="p-trace">
+    <div class="flowtabs" id="flowTabs" role="tablist">
+      <button role="tab" aria-selected="true" data-f="get">kubectl get pods</button>
+      <button role="tab" aria-selected="false" data-f="run">kubectl run nginx --image=nginx</button>
+    </div>
+    <div class="grid">
+      <div id="traceStack"></div>
+      <div class="card">
+        <h2 id="stepTitle"></h2>
+        <div class="bar"><i id="bar"></i></div>
+        <div id="stepBody"></div>
+        <div class="steps">
+          <button class="btn alt" id="prev" type="button">Back</button>
+          <button class="btn" id="next" type="button">Next step</button>
+          <button class="btn alt" id="restart" type="button">Restart</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 WHERE -->
+  <section class="panel" id="p-where">
+    <div class="card">
+      <h2>Which layer does this command talk to?</h2>
+      <p class="sub">Most confusion disappears once you know where a command lands. Click a row to light up its layer in the stack on tab 1.</p>
+      <div class="tw"><table id="whereTbl">
+        <thead><tr><th>Command (typed on your Mac)</th><th>Talks to</th><th>What you see</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="note"><b>The trap:</b> <code>docker ps</code> on the Mac shows only one container (<code>minikube</code>). All the Kubernetes containers are <i>inside</i> it, in a second Docker engine, so you don't see them from outside.</div>
+    </div>
+  </section>
+
+  <!-- 4 PROOF -->
+  <section class="panel" id="p-proof">
+    <div class="card">
+      <h2>Your outputs decoded</h2>
+      <div class="ev"><h3><code>minikube profile list</code> → DRIVER docker, RUNTIME docker</h3>
+        Driver <code>docker</code> = the node is a container. Runtime <code>docker</code> = inside that node, Kubernetes uses Docker to run pods.</div>
+      <div class="ev"><h3><code>docker ps</code> → one container, image <code>kicbase</code></h3>
+        <code>kicbase</code> is minikube's "Kubernetes in Container" base image. That single container <i>is</i> the node. Port mappings <code>127.0.0.1:32771→8443</code> is how your Mac reaches the API server (8443) inside it. <code>→22</code> is SSH (used by <code>minikube ssh</code>).</div>
+      <div class="ev"><h3><code>kubectl get nodes -o wide</code> → <code>docker://29.2.1</code>, IP 192.168.49.2</h3>
+        The CONTAINER-RUNTIME column is the inner engine. The 192.168.49.x address lives on a Docker network inside Docker Desktop's VM, which is why your Mac cannot reach it directly and needs the 127.0.0.1 port mappings.</div>
+      <div class="ev"><h3><code>--context docker-desktop</code> → connection refused on 127.0.0.1:51288</h3>
+        The context exists in <code>~/.kube/config</code>, but nothing is listening. Most likely Docker Desktop's built-in Kubernetes is switched off. So you have <b>one live cluster</b> (minikube), plus one dead context entry. (Earlier I said "two clusters" from the context list alone. Your output shows only one is alive.)</div>
+      <div class="note">Optional tidy-up, not needed: <code>kubectl config delete-context docker-desktop</code> removes the dead entry. Check <code>kubectl config get-contexts</code> afterwards.</div>
+      <h2 style="margin-top:18px">Prove it yourself (5 commands)</h2>
+<pre>minikube ssh -- docker ps            # inner engine: k8s_* containers appear
+minikube ssh -- sudo ls /etc/kubernetes/manifests   # static pod YAMLs of the control plane
+minikube ssh -- sudo systemctl status kubelet --no-pager | head -5
+kubectl config view --minify | grep server           # the 127.0.0.1 port mapping
+docker port minikube                                 # compare with the line above</pre>
+    </div>
+  </section>
+
+  <!-- 5 CKA -->
+  <section class="panel" id="p-cka">
+    <div class="card">
+      <h2>What carries over to the CKA, and what doesn't</h2>
+      <div class="tw"><table>
+        <thead><tr><th>Topic</th><th>Your Mac (minikube + docker)</th><th>Exam cluster</th></tr></thead>
+        <tbody>
+          <tr><td>Node access</td><td><code>minikube ssh</code></td><td><code>ssh node01</code> (the task tells you)</td></tr>
+          <tr><td>Container runtime</td><td>Docker via cri-dockerd. Use <code>docker ps</code> on the node.</td><td><b>containerd</b>. Use <code>crictl ps</code>, not <code>docker</code>.</td></tr>
+          <tr><td>Control plane</td><td>Static pods in <code>/etc/kubernetes/manifests</code> (same idea)</td><td>Same. kubeadm-built.</td></tr>
+          <tr><td>kubelet</td><td>systemd service in the node container</td><td>systemd service on a VM. Same <code>systemctl</code> and <code>journalctl</code>.</td></tr>
+          <tr><td>Nodes</td><td>One node, you cannot practise drain/upgrade/join properly</td><td>Multiple nodes. Upgrade, drain, NotReady tasks.</td></tr>
+          <tr><td>etcd and certs</td><td>Exists, but minikube paths differ (<code>/var/lib/minikube/certs</code>)</td><td><code>/etc/kubernetes/pki</code></td></tr>
+          <tr><td>Breaking things safely</td><td>Easy to wreck and <code>minikube delete</code></td><td>Do not break your task cluster</td></tr>
+        </tbody>
+      </table></div>
+      <div class="note"><b>Practical rule:</b> use the Mac for <code>kubectl</code> speed drills (YAML, imperative commands, RBAC, probes, rollouts, NetworkPolicy objects). Use the Killercoda CKA playground for anything about nodes, kubeadm, etcd, kubelet, certificates and upgrades.</div>
+    </div>
+  </section>
+
+  <!-- 6 QUIZ -->
+  <section class="panel" id="p-quiz">
+    <div class="card"><h2>Self-check</h2><p class="sub">Answer before you click. Wrong answers explain why.</p><div id="quizBox"></div></div>
+  </section>
+
+  <footer>Built from the outputs of <code>minikube profile list</code>, <code>docker ps</code> and <code>kubectl get nodes -o wide</code> on a MacBook Air M4 (minikube v1.35.1 node, Docker 29.2.1). Details of other minikube versions may differ slightly.</footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- data ---------- */
+var LAYERS = {
+  mac:{t:"macOS on your MacBook Air M4", b:"Your actual computer. Apple Silicon (arm64). Linux containers cannot run natively on macOS, so something Linux-shaped has to sit underneath. That is the next layer.",
+       see:"uname -m   # arm64", ex:"Your kubectl, minikube and docker commands start here."},
+  cli:{t:"Client tools on the Mac", b:"Three command-line programs that only send requests. <b>kubectl</b> talks to a Kubernetes API server. <b>docker</b> talks to a Docker engine. <b>minikube</b> creates and manages the node. None of them run your containers.",
+       see:"which kubectl minikube docker", ex:"This is why kubectl works against any cluster: it just needs an address and credentials from ~/.kube/config."},
+  vm:{t:"Docker Desktop's Linux VM", b:"Docker Desktop silently runs a small Linux virtual machine. That VM gives containers a Linux kernel. You never log into it normally.",
+       see:"Docker Desktop app → Settings → Resources", ex:"Everything below this layer is Linux, even though you are on a Mac."},
+  outer:{t:"Outer Docker Engine", b:"The engine your Mac's <code>docker</code> command talks to. Because minikube uses the docker <i>driver</i>, the whole Kubernetes node is just <b>one container</b> in this engine.",
+       see:"docker ps   # only 'minikube' (image kicbase)", ex:"Your docker ps output showed exactly one container for this reason."},
+  node:{t:"The container named 'minikube' = the node", b:"This container pretends to be a small server (Debian 12, IP 192.168.49.2). It runs systemd, the kubelet, and its own Docker engine. In Kubernetes terms this is your single node, with the control-plane and worker roles together.",
+       see:"minikube ssh   # drops you inside it", ex:"On the exam you ssh to a real VM instead. Same idea: you work on the node's Linux."},
+  kubelet:{t:"kubelet", b:"The node agent. Watches the API server for pods assigned to this node, then tells the runtime to start or stop containers. Reports health back. If it is down, the node goes NotReady.",
+       see:"minikube ssh -- sudo systemctl status kubelet", ex:"CKA troubleshooting: systemctl status/restart kubelet and journalctl -u kubelet. Same on the exam."},
+  cri:{t:"cri-dockerd (the CRI shim)", b:"Kubernetes speaks CRI, a standard runtime API. Docker doesn't speak CRI by itself, so <code>cri-dockerd</code> translates CRI calls into Docker calls. On the exam, containerd speaks CRI natively, so no shim.",
+       see:"minikube ssh -- ls /var/run/cri-dockerd.sock", ex:"Why it matters: the shim is the dotted line between 'Kubernetes' and 'container engine'."},
+  inner:{t:"Inner Docker Engine = the container runtime", b:"A second Docker engine living <i>inside</i> the minikube container. This is the runtime your node reports as <code>docker://29.2.1</code>. All control-plane and workload containers are started here, so the Mac's <code>docker ps</code> cannot see them.",
+       see:"minikube ssh -- docker ps   # k8s_* containers", ex:"Shortcut: eval $(minikube docker-env) makes your Mac's docker CLI talk to this one. Undo: eval $(minikube docker-env -u)"},
+  cplane:{t:"Control plane containers", b:"etcd (the database), kube-apiserver (the front door), scheduler (picks a node), controller-manager (reconciles state), plus kube-proxy and coredns. They start from static pod YAML files that the kubelet reads from disk.",
+       see:"minikube ssh -- sudo ls /etc/kubernetes/manifests", ex:"CKA gold: broken manifests in this folder are a classic troubleshooting task."},
+  pods:{t:"Your workload pods", b:"Whatever you deploy. Each pod appears as a pause container plus your app container(s) in the inner engine.",
+       see:"kubectl get pods -A -o wide", ex:"kubectl sees pods. Only the inner Docker sees the actual containers."}
+};
+var ORDER = ["mac","cli","vm","outer","node","kubelet","cri","inner","cplane","pods"];
+
+var FLOWS = {
+  get:{title:"kubectl get pods", steps:[
+    {h:"You press Enter on the Mac", l:["cli"], t:"kubectl reads <code>~/.kube/config</code>, finds the current context (<code>minikube</code>), and gets the server address, something like <code>https://127.0.0.1:32771</code>, plus client certificate credentials.", c:"kubectl config view --minify"},
+    {h:"Request leaves via localhost", l:["cli","outer"], t:"Port 32771 on your Mac is mapped by Docker to port <b>8443</b> inside the <code>minikube</code> container. That is how a Mac reaches a node it has no direct network route to.", c:"docker port minikube"},
+    {h:"API server receives it", l:["node","cplane"], t:"<code>kube-apiserver</code> (a container in the control plane) authenticates the certificate and checks RBAC.", c:"minikube ssh -- docker ps | grep apiserver"},
+    {h:"API server reads etcd", l:["cplane"], t:"The pod list is read from <code>etcd</code>, the cluster database, and sent back along the same path.", c:"kubectl -n kube-system get pods | grep etcd"},
+    {h:"Notice what did NOT happen", l:[], t:"The kubelet and container runtime were <b>not involved</b>. <code>get</code> only reads stored state. That is why <code>kubectl get pods</code> can show a pod as Running even if the real container just died, until the kubelet reports back.", c:""}
+  ]},
+  run:{title:"kubectl run nginx --image=nginx", steps:[
+    {h:"Request reaches the API server", l:["cli","outer","cplane"], t:"Same first steps as <code>get</code>: kubeconfig → 127.0.0.1 port → apiserver on 8443.", c:"kubectl run nginx --image=nginx"},
+    {h:"Pod is stored, with no node yet", l:["cplane"], t:"The apiserver validates the Pod and writes it to etcd. At this point <code>kubectl get pod</code> shows Pending, and nothing is running.", c:"kubectl get pod nginx -o wide"},
+    {h:"Scheduler picks the node", l:["cplane"], t:"The scheduler sees a pod with no <code>nodeName</code>, filters nodes (taints, resources, affinity), and writes the chosen node back. With one node there is one choice. When pods stay Pending forever, this step is where to look.", c:"kubectl describe pod nginx   # Events: Scheduled"},
+    {h:"kubelet notices", l:["kubelet","node"], t:"The kubelet watches the API for pods assigned to its node. It sees nginx and starts work.", c:"minikube ssh -- sudo journalctl -u kubelet --no-pager | tail"},
+    {h:"kubelet calls the runtime via CRI", l:["kubelet","cri"], t:"The kubelet sends CRI calls (create sandbox, pull image, create container) to the CRI socket. On your Mac that socket belongs to <code>cri-dockerd</code>. On the exam it belongs to containerd.", c:""},
+    {h:"Inner Docker starts the container", l:["cri","inner","pods"], t:"cri-dockerd asks the inner Docker engine to create a pause container and the nginx container. Docker uses containerd and runc under the hood. The image is pulled here, inside the node.", c:"minikube ssh -- docker ps | grep nginx"},
+    {h:"Status flows back", l:["kubelet","cplane"], t:"The kubelet reports Running to the API server, which stores it in etcd. Only now does <code>kubectl get pod</code> show Running.", c:"kubectl get pod nginx"}
+  ]}
+};
+
+var WHERE = [
+  {c:"kubectl get pods", l:["cli","cplane"], to:"Kubernetes API server (via 127.0.0.1 port map)", see:"Cluster objects"},
+  {c:"docker ps", l:["outer"], to:"Outer Docker engine", see:"One container: minikube"},
+  {c:"minikube ssh", l:["node"], to:"A shell inside the node container", see:"The Linux the kubelet runs on (like ssh node01)"},
+  {c:"minikube ssh -- docker ps", l:["inner"], to:"Inner Docker engine", see:"k8s_* containers: control plane + pods"},
+  {c:"eval $(minikube docker-env)", l:["cli","inner"], to:"Re-points your Mac's docker CLI at the inner engine", see:"Now docker ps shows k8s_* containers. Undo with docker-env -u."},
+  {c:"minikube ssh -- sudo systemctl status kubelet", l:["kubelet"], to:"systemd inside the node", see:"Kubelet state (exam skill)"},
+  {c:"minikube ssh -- sudo ls /etc/kubernetes/manifests", l:["cplane","node"], to:"Node filesystem", see:"Static pod manifests (exam skill)"},
+  {c:"kubectl config use-context docker-desktop", l:["cli"], to:"Only edits ~/.kube/config", see:"Nothing runs; later commands fail if that cluster is off"},
+  {c:"minikube stop", l:["outer","node"], to:"Stops the minikube container", see:"docker ps no longer lists it; kubectl cannot connect"},
+  {c:"minikube delete", l:["outer","node"], to:"Removes the node container entirely", see:"Cluster gone; start fresh with minikube start"}
+];
+
+var QUIZ = [
+  {q:"On your Mac, docker ps lists only one container. Where are the etcd and apiserver containers?",
+   o:["They were not started","Inside the minikube container, in a second (inner) Docker engine","In Docker Desktop's Kubernetes cluster","Running natively on macOS"],a:1,
+   f:"The minikube node is a container; the inner engine inside it runs the Kubernetes containers. Use minikube ssh -- docker ps to see them."},
+  {q:"What does the context 'docker-desktop' in kubectl config get-contexts prove?",
+   o:["A second cluster is running","Docker Desktop is running","Only that a kubeconfig entry exists","Docker is the runtime"],a:2,
+   f:"A context is just a saved entry. Your connection-refused error shows nothing was listening on it."},
+  {q:"On the CKA exam you want to list containers on a worker node. Which is the right tool?",
+   o:["docker ps","crictl ps","minikube ssh","kubectl get containers"],a:1,
+   f:"Exam nodes use containerd; crictl talks to it through CRI. docker is not usually there."},
+  {q:"You run kubectl get pods and a pod shows Running, but its container crashed 2 seconds ago. Why can this happen?",
+   o:["get pods asks the container runtime directly","get pods reads stored state; the kubelet has not reported the change yet","Docker caches the status","The scheduler hasn't run"],a:1,
+   f:"get only reads from the API server / etcd. Status arrives later when the kubelet reports."},
+  {q:"Why can your Mac not ping the node IP 192.168.49.2 directly?",
+   o:["Firewall rule","The IP is on a Docker network inside Docker Desktop's Linux VM","minikube blocks ICMP","It is an IPv6 address"],a:1,
+   f:"On macOS Docker networks live inside the hidden VM, so Docker publishes ports on 127.0.0.1 instead, like 32771→8443."}
+];
+
+/* ---------- helpers ---------- */
+function $(s,r){return (r||document).querySelector(s)}
+function $$(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")}
+
+/* theme */
+var root=document.documentElement;
+try{var th=localStorage.getItem("mk-theme");if(th)root.setAttribute("data-theme",th)}catch(e){}
+$("#themeBtn").addEventListener("click",function(){
+  var dark=root.getAttribute("data-theme")==="dark"||(!root.getAttribute("data-theme")&&window.matchMedia("(prefers-color-scheme: dark)").matches);
+  var n=dark?"light":"dark";root.setAttribute("data-theme",n);
+  try{localStorage.setItem("mk-theme",n)}catch(e){}
+});
+
+/* tabs */
+function showPanel(id){
+  $$("#tabs button").forEach(function(b){b.setAttribute("aria-selected",b.dataset.p===id?"true":"false")});
+  $$(".panel").forEach(function(p){p.classList.toggle("on",p.id==="p-"+id)});
+}
+$$("#tabs button").forEach(function(b){b.addEventListener("click",function(){showPanel(b.dataset.p)})});
+
+/* ---------- tab 1 : stack ---------- */
+var stackEl=$("#stackView");
+function layerNodes(root){return $$(".layer",root)}
+function highlight(rootEl,ids){
+  layerNodes(rootEl).forEach(function(n){n.classList.toggle("hot",ids.indexOf(n.dataset.id)>-1)});
+}
+function selectLayer(id){
+  layerNodes(stackEl).forEach(function(n){n.classList.toggle("sel",n.dataset.id===id)});
+  var L=LAYERS[id];if(!L)return;
+  $("#detail").innerHTML="<h2>"+L.t+"</h2><p>"+L.b+"</p><p><b>See it:</b></p><pre>"+esc(L.see)+"</pre><p class=\"sub\" style=\"margin:0\">"+L.ex+"</p>";
+}
+layerNodes(stackEl).forEach(function(n){
+  n.addEventListener("click",function(e){e.stopPropagation();selectLayer(n.dataset.id)});
+});
+selectLayer("node");
+
+/* ---------- tab 2 : trace ---------- */
+var traceStack=$("#traceStack");
+traceStack.innerHTML=stackEl.innerHTML;
+layerNodes(traceStack).forEach(function(n){n.style.cursor="default"});
+var flow="get",idx=0;
+function renderStep(){
+  var F=FLOWS[flow],S=F.steps[idx];
+  $("#stepTitle").textContent="Step "+(idx+1)+" of "+F.steps.length+": "+S.h;
+  $("#bar").style.width=((idx+1)/F.steps.length*100)+"%";
+  $("#stepBody").innerHTML="<p>"+S.t+"</p>"+(S.c?"<p><b>Prove it:</b></p><pre>"+esc(S.c)+"</pre>":"");
+  highlight(traceStack,S.l);
+  $("#prev").disabled=idx===0;
+  $("#next").disabled=idx===F.steps.length-1;
+}
+$("#next").addEventListener("click",function(){if(idx<FLOWS[flow].steps.length-1){idx++;renderStep()}});
+$("#prev").addEventListener("click",function(){if(idx>0){idx--;renderStep()}});
+$("#restart").addEventListener("click",function(){idx=0;renderStep()});
+$$("#flowTabs button").forEach(function(b){b.addEventListener("click",function(){
+  flow=b.dataset.f;idx=0;
+  $$("#flowTabs button").forEach(function(x){x.setAttribute("aria-selected",x===b?"true":"false")});
+  renderStep();
+})});
+renderStep();
+
+/* ---------- tab 3 : where ---------- */
+var tb=$("#whereTbl tbody");
+WHERE.forEach(function(w){
+  var tr=document.createElement("tr");tr.style.cursor="pointer";tr.tabIndex=0;
+  tr.innerHTML="<td><code>"+esc(w.c)+"</code></td><td>"+w.to+"</td><td>"+w.see+"</td>";
+  function go(){showPanel("stack");highlight(stackEl,w.l);selectLayer(w.l[w.l.length-1])}
+  tr.addEventListener("click",go);
+  tr.addEventListener("keydown",function(e){if(e.key==="Enter")go()});
+  tb.appendChild(tr);
+});
+/* clear highlights when user clicks a layer again */
+stackEl.addEventListener("click",function(){highlight(stackEl,[])},true);
+
+/* ---------- tab 6 : quiz ---------- */
+var qb=$("#quizBox");
+QUIZ.forEach(function(Q,qi){
+  var d=document.createElement("div");d.className="q";
+  d.innerHTML="<b>"+(qi+1)+". "+esc(Q.q)+"</b><div class=\"opts\"></div><div class=\"fb\"></div>";
+  var opts=$(".opts",d),fb=$(".fb",d),done=false;
+  Q.o.forEach(function(o,oi){
+    var b=document.createElement("button");b.type="button";b.textContent=o;
+    b.addEventListener("click",function(){
+      if(done)return;done=true;
+      var bs=$$("button",opts);
+      bs.forEach(function(x,xi){if(xi===Q.a)x.classList.add("right")});
+      if(oi!==Q.a)b.classList.add("wrong");
+      fb.textContent=(oi===Q.a?"Correct. ":"Not quite. ")+Q.f;fb.classList.add("on");
+    });
+    opts.appendChild(b);
+  });
+  qb.appendChild(d);
+});
+})();
+</script>
+</body>
+</html>
