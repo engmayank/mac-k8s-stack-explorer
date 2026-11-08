@@ -85,6 +85,15 @@ th{color:var(--muted);font-weight:600;font-size:.8rem;text-transform:uppercase;l
 .q .fb{margin-top:8px;color:var(--muted);display:none}
 .q .fb.on{display:block}
 .note{background:var(--codebg);border-radius:8px;padding:10px 12px;margin:10px 0;color:var(--ink)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}
+.chips button{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:.88rem}
+.chips button[aria-selected="true"]{border-color:var(--accent);color:var(--accent);font-weight:600}
+.blk{display:flex;gap:12px;align-items:flex-start;border:2px solid var(--line);border-radius:12px;padding:10px 12px;margin:8px 0;background:var(--mac)}
+.blk .bn{flex:0 0 auto;min-width:74px;text-align:center;border-radius:8px;background:var(--card);border:1px solid var(--line);padding:3px 8px;font-weight:700;font-size:.85rem}
+.blk b{display:block}
+.blk span{color:var(--muted);font-size:.92rem}
+.blk.hid{border-style:dashed}
+.t-mid{background:var(--codebg);color:var(--muted)}
 footer{color:var(--muted);font-size:.85rem;margin-top:26px}
 </style>
 </head>
@@ -104,7 +113,8 @@ footer{color:var(--muted);font-size:.85rem;margin-top:26px}
     <button role="tab" aria-selected="false" data-p="where">3. Which layer am I in?</button>
     <button role="tab" aria-selected="false" data-p="proof">4. Your outputs decoded</button>
     <button role="tab" aria-selected="false" data-p="cka">5. Mac vs the exam</button>
-    <button role="tab" aria-selected="false" data-p="quiz">6. Self-check</button>
+    <button role="tab" aria-selected="false" data-p="ent">6. Mac vs enterprise</button>
+    <button role="tab" aria-selected="false" data-p="quiz">7. Self-check</button>
   </nav>
 
   <!-- 1 STACK -->
@@ -228,6 +238,36 @@ docker port minikube                                 # compare with the line abo
     </div>
   </section>
 
+  <!-- 6 ENTERPRISE -->
+  <section class="panel" id="p-ent">
+    <div class="card">
+      <h2>Same Kubernetes, very different shape</h2>
+      <p class="sub">The API objects (Pods, Deployments, Services) are identical. What changes is how many machines, who runs the control plane, and what surrounds the cluster.</p>
+      <div class="flowtabs" id="modeTabs" role="tablist">
+        <button role="tab" aria-selected="true" data-m="mac">Your Mac</button>
+        <button role="tab" aria-selected="false" data-m="self">Enterprise: self-managed (kubeadm)</button>
+        <button role="tab" aria-selected="false" data-m="managed">Enterprise: managed (EKS / AKS / GKE)</button>
+      </div>
+      <div id="modeTitle" style="font-weight:600;margin-bottom:6px"></div>
+      <div id="modeView"></div>
+      <div class="note" id="modeNote"></div>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <h2>Concern by concern</h2>
+      <div class="chips" id="entChips" role="tablist">
+        <button data-k="all" aria-selected="true" type="button">All</button>
+        <button data-k="core" aria-selected="false" type="button">Core CKA</button>
+        <button data-k="light" aria-selected="false" type="button">Light CKA</button>
+        <button data-k="beyond" aria-selected="false" type="button">Beyond CKA</button>
+      </div>
+      <div class="tw"><table id="entTbl">
+        <thead><tr><th>Concern</th><th>Your Mac</th><th>Enterprise</th><th>CKA</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <div class="note"><b>Reading the CKA column:</b> <i>Core</i> means expect tasks on it. <i>Light</i> means you may touch it. <i>Beyond</i> is real-world knowledge for your SA conversations, not exam material. The exam cluster is self-managed (kubeadm), so the managed-service column is context, not practice.</div>
+    </div>
+  </section>
+
   <!-- 6 QUIZ -->
   <section class="panel" id="p-quiz">
     <div class="card"><h2>Self-check</h2><p class="sub">Answer before you click. Wrong answers explain why.</p><div id="quizBox"></div></div>
@@ -312,7 +352,13 @@ var QUIZ = [
    f:"get only reads from the API server / etcd. Status arrives later when the kubelet reports."},
   {q:"Why can your Mac not ping the node IP 192.168.49.2 directly?",
    o:["Firewall rule","The IP is on a Docker network inside Docker Desktop's Linux VM","minikube blocks ICMP","It is an IPv6 address"],a:1,
-   f:"On macOS Docker networks live inside the hidden VM, so Docker publishes ports on 127.0.0.1 instead, like 32771→8443."}
+   f:"On macOS Docker networks live inside the hidden VM, so Docker publishes ports on 127.0.0.1 instead, like 32771→8443."},
+  {q:"Why do enterprise clusters run 3 or 5 control-plane nodes rather than 2 or 4?",
+   o:["Kubernetes refuses even numbers","etcd needs a majority (quorum); an odd count tolerates the same failures as the next even number but costs one fewer node","The scheduler only works with odd counts","It is a licensing rule"],a:1,
+   f:"With 3 members, etcd survives 1 loss. With 4 it still survives only 1, so the fourth node adds cost, not safety."},
+  {q:"In a managed service such as EKS, which CKA task could you NOT practise directly?",
+   o:["Creating a Deployment","Editing the kube-apiserver static pod manifest on a control-plane node","Writing a NetworkPolicy","Creating a Role and RoleBinding"],a:1,
+   f:"The provider hides the control plane, so you cannot reach or edit its manifests. The exam's self-managed kubeadm clusters are where those tasks live."}
 ];
 
 /* ---------- helpers ---------- */
@@ -389,7 +435,84 @@ WHERE.forEach(function(w){
 /* clear highlights when user clicks a layer again */
 stackEl.addEventListener("click",function(){highlight(stackEl,[])},true);
 
-/* ---------- tab 6 : quiz ---------- */
+/* ---------- tab 6 : enterprise ---------- */
+var MODES={
+  mac:{title:"Your Mac: minikube with the docker driver",
+    note:"Everything is on one laptop and dies with it. Good for learning kubectl and YAML. It teaches you almost nothing about high availability, upgrades or node failures.",
+    blocks:[
+      {t:"No shared platform services",s:"No load balancer, registry, SSO or monitoring around the cluster. You are the only user.",n:"none"},
+      {t:"One node, which is a container",s:"Control plane, kubelet, inner Docker and your pods all inside the single minikube container. If it stops, the whole cluster is gone.",n:"x1"}
+    ]},
+  self:{title:"Enterprise self-managed: kubeadm on VMs or bare metal",
+    note:"This is the shape closest to the CKA exam, just larger. Your team owns the control plane, its certificates, etcd backups and every upgrade.",
+    blocks:[
+      {t:"API endpoint: load balancer or virtual IP",s:"kube-vip, HAProxy or a cloud load balancer in front of every API server. Clients and nodes use one DNS name, so losing one control-plane node is invisible.",n:"x1 name"},
+      {t:"Control-plane nodes",s:"kube-apiserver, scheduler, controller-manager and (stacked topology) etcd on each. An odd count so etcd keeps quorum: 3 survives one loss, 5 survives two. Tainted so workloads stay off.",n:"x3 or x5"},
+      {t:"Worker nodes in pools",s:"kubelet + containerd + CNI agent + your pods. Pools by purpose (general, memory-heavy, GPU), spread across zones or racks, scaled by an autoscaler.",n:"x10s to 100s"},
+      {t:"Shared platform services",s:"CNI (Calico, Cilium), CSI storage with several StorageClasses, ingress or Gateway plus a LoadBalancer provider (MetalLB on-prem), private registry, monitoring, central logging, SSO, GitOps.",n:"many"}
+    ]},
+  managed:{title:"Enterprise managed: EKS, AKS or GKE",
+    note:"The provider runs the control plane. You lose the ability to ssh to it or edit its static pod manifests, and you gain provider-managed upgrades and HA. The CKA does not use this model.",
+    blocks:[
+      {t:"Provider-run control plane (hidden)",s:"API server, scheduler and etcd run for you, highly available across zones. You see an endpoint and nothing else.",n:"not yours",hid:true},
+      {t:"Node pools (VMs you pay for)",s:"kubelet + containerd on VMs you size. Upgrades and image rollouts happen node by node through the provider.",n:"xN"},
+      {t:"Cloud integrations",s:"Cloud load balancers, disks through CSI, IAM mapped to Kubernetes RBAC, private networking, managed registry.",n:"many"}
+    ]}
+};
+var mode="mac";
+function renderMode(){
+  var M=MODES[mode];
+  $("#modeTitle").textContent=M.title;
+  $("#modeNote").textContent=M.note;
+  var h="";
+  M.blocks.forEach(function(b){
+    h+="<div class=\"blk"+(b.hid?" hid":"")+"\"><div class=\"bn\">"+esc(b.n)+"</div><div><b>"+esc(b.t)+"</b><span>"+esc(b.s)+"</span></div></div>";
+  });
+  $("#modeView").innerHTML=h;
+}
+$$("#modeTabs button").forEach(function(b){b.addEventListener("click",function(){
+  mode=b.dataset.m;
+  $$("#modeTabs button").forEach(function(x){x.setAttribute("aria-selected",x===b?"true":"false")});
+  renderMode();
+})});
+renderMode();
+
+var ENT=[
+  {k:"core",a:"Nodes",m:"One node, control plane and worker together.",e:"Dedicated control-plane nodes (3 or 5) plus many workers. Drain, cordon and taints are daily tools."},
+  {k:"core",a:"Container runtime",m:"Docker through cri-dockerd. Inspect with docker ps.",e:"containerd (or CRI-O). Inspect with crictl ps. Same kubelet, different engine."},
+  {k:"core",a:"Control plane location",m:"Static pods inside the node container.",e:"Static pods under /etc/kubernetes/manifests on each control-plane node (self-managed). Hidden in managed services."},
+  {k:"core",a:"etcd",m:"One member. A restart is the only recovery story.",e:"3 or 5 members, quorum, scheduled snapshots, tested restores. Snapshot and restore is a classic CKA task."},
+  {k:"core",a:"Upgrades",m:"minikube delete, then start a newer version.",e:"kubeadm upgrade one control-plane node at a time, then drain and upgrade each worker. Managed: the provider does rolling node pool upgrades."},
+  {k:"core",a:"Access and RBAC",m:"One admin client certificate. You can do anything.",e:"SSO or OIDC identities, namespaces per team, Roles and RoleBindings, audit logs. Least privilege is the default."},
+  {k:"core",a:"Networking and policy",m:"Basic default CNI. NetworkPolicy may not be enforced unless you enable a CNI such as Calico or Cilium.",e:"A policy-enforcing CNI (Calico, Cilium, sometimes eBPF). Default-deny NetworkPolicies per namespace are common."},
+  {k:"core",a:"Storage",m:"A built-in hostPath provisioner and one default StorageClass.",e:"CSI drivers (cloud disks, Ceph, vSAN, Nutanix CSI and others) with tiered StorageClasses, quotas and reclaim policies."},
+  {k:"light",a:"API endpoint",m:"127.0.0.1 port mapped to 8443 inside the node container.",e:"A load-balanced virtual IP or DNS name in front of several API servers. kubeadm needs controlPlaneEndpoint set for HA."},
+  {k:"light",a:"Exposing services",m:"NodePort, kubectl port-forward or minikube tunnel.",e:"Ingress or Gateway API behind a real LoadBalancer (cloud, or MetalLB on-prem), with TLS and DNS."},
+  {k:"light",a:"Scheduling and resilience",m:"Only one node, so spreading rules mean nothing.",e:"Anti-affinity, topology spread across zones, PodDisruptionBudgets, priority classes, autoscaling (HPA plus cluster autoscaler)."},
+  {k:"beyond",a:"Images",m:"Pulls from the internet or loads local images.",e:"Private registry, image scanning and signing, admission policy blocking unapproved images."},
+  {k:"beyond",a:"Observability",m:"kubectl logs, kubectl top after enabling metrics-server.",e:"Prometheus and Grafana, central logging, tracing, alerting tied to on-call."},
+  {k:"beyond",a:"Delivery",m:"kubectl apply from your terminal.",e:"CI/CD plus GitOps (Argo CD or Flux), Helm charts, environment promotion, change approval."},
+  {k:"beyond",a:"Security posture",m:"Nothing hardened. Secrets are base64 in etcd.",e:"Pod Security Admission, secrets encryption at rest or an external secrets manager, network segmentation, CIS benchmarks."}
+];
+var entFilter="all";
+function renderEnt(){
+  var tbody=$("#entTbl tbody");tbody.innerHTML="";
+  ENT.forEach(function(r){
+    if(entFilter!=="all"&&r.k!==entFilter)return;
+    var tag=r.k==="core"?"<span class=\"tag t-ex\">Core</span>":(r.k==="light"?"<span class=\"tag t-mid\">Light</span>":"<span class=\"tag t-mid\">Beyond</span>");
+    var tr=document.createElement("tr");
+    tr.innerHTML="<td><b>"+esc(r.a)+"</b></td><td>"+esc(r.m)+"</td><td>"+esc(r.e)+"</td><td>"+tag+"</td>";
+    tbody.appendChild(tr);
+  });
+}
+$$("#entChips button").forEach(function(b){b.addEventListener("click",function(){
+  entFilter=b.dataset.k;
+  $$("#entChips button").forEach(function(x){x.setAttribute("aria-selected",x===b?"true":"false")});
+  renderEnt();
+})});
+renderEnt();
+
+/* ---------- tab 7 : quiz ---------- */
 var qb=$("#quizBox");
 QUIZ.forEach(function(Q,qi){
   var d=document.createElement("div");d.className="q";
